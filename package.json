@@ -1,0 +1,20 @@
+{
+  "name": "legal-matter-error-groups",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/legal_error_service.ts",
+    "demo": "tsx src/demo_capture.ts",
+    "test": "node --import tsx --test test/workflow_grouping.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
