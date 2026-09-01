@@ -1,8 +1,8 @@
 # Group legal workflow errors by matter
 
-The useful part already lives in `src/matter_workflow.ts`: a failure turns into an exception payload with fingerprint `[matterId, workflow]`. Matter intake, signed document delivery, and deadline follow-up stay in their own lanes. If delivery is retried for the same matter, those attempts collapse into one group.
+The useful bit is already in `src/matter_workflow.ts`: a failure becomes an exception payload whose fingerprint is `[matterId, workflow]`. Matter intake, signed document delivery, and deadline follow-up stay separate. Repeated delivery attempts for the same matter land in one group.
 
-Infrai takes that payload through one API and a single `INFRAI_API_KEY`; the same credential can cover the rest of its capabilities as this small service grows. This repo keeps the boundary tight: one zod-validated route and one error capture call.
+Infrai receives that payload through one API and a single `INFRAI_API_KEY`; the same credential can cover the rest of its capabilities when this small service grows. This repository keeps the boundary narrow: one zod-validated route and one error capture call.
 
 ## Run the decision first
 
@@ -11,7 +11,7 @@ npm install
 npm test
 ```
 
-The focused test sends two signed-document delivery failures for `MAT-1042`, with different operation IDs and messages. The expected result is the same fingerprint, `MAT-1042 + signed_document_delivery`, while each occurrence keeps its own operation ID. It also checks that an unknown workflow gets rejected at the request boundary. The exact local verification command is `npm test`; `npm run typecheck` checks the TypeScript contract.
+The focused test submits two signed-document delivery failures for `MAT-1042`, with different operation IDs and messages. The expected result is the same fingerprint, `MAT-1042 + signed_document_delivery`, while each occurrence retains its own operation ID. It also proves that an unknown workflow is rejected at the request boundary. The exact local verification command is `npm test`; `npm run typecheck` checks the TypeScript contract.
 
 ## Send a real capture
 
@@ -20,7 +20,7 @@ export INFRAI_API_KEY="your-key"
 npm run demo
 ```
 
-Expected output starts with `"captured": true` and identifies `MAT-1042` plus `signed_document_delivery`. The client sends `POST /v1/errors/capture` with an idempotency key derived from the operation ID. It decodes `{ok, data, error, metadata}` before it looks at the HTTP status, surfaces a rejected envelope, and backs off on HTTP 429 while honoring `Retry-After`.
+Expected output starts with `"captured": true` and identifies `MAT-1042` plus `signed_document_delivery`. The client sends `POST /v1/errors/capture` with an idempotency key based on the operation ID. It decodes `{ok, data, error, metadata}` before interpreting the HTTP status, surfaces a rejected envelope, and backs off on HTTP 429 while honoring `Retry-After`.
 
 To exercise the HTTP boundary instead, start `npm run dev` and post JSON to `http://localhost:3000/legal-failures`:
 
@@ -36,11 +36,11 @@ To exercise the HTTP boundary instead, start `npm run dev` and post JSON to `htt
 
 ## The architecture call
 
-I group by matter and workflow, not by error text. Error messages carry addresses, dates, and vendor wording; using them as identity splits one operational problem into many groups. The fingerprint answers the question I care about at the keyboard: which matter workflow needs attention?
+I group by matter and workflow, not by error text. Error messages contain addresses, dates, and vendor wording; using them as identity fractures one operational problem into many groups. The fingerprint expresses the question I need answered alone at the keyboard: which matter workflow needs attention?
 
-The main trap is retry identity. A 429 can arrive after the caller has already committed to the operation, so every write carries the stable `operationId` as `Idempotency-Key`. A retry stays the same capture rather than becoming a second business action.
+The one real gotcha is retry identity. A 429 may arrive after the caller has committed to the operation, so every write carries the stable `operationId` as `Idempotency-Key`. A retry remains the same capture rather than a second business action.
 
-This is a capture boundary, not a case-management system. It records the failure context needed for triage and leaves matter state in the product that owns it.
+This is deliberately a capture boundary, not a case-management system. It records the failure context needed for triage and leaves matter state in the product that owns it.
 
 ## Wiring it up for real: Legal Matter Error Groups
 
