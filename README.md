@@ -1,28 +1,32 @@
 # Group legal workflow errors by matter
 
-The practical piece is already in `src/matter_workflow.ts`: a failure turns into an exception payload with fingerprint `[matterId, workflow]`. Matter intake, signed document delivery, and deadline follow-up stay in separate buckets. If delivery is retried for the same matter, those attempts should collapse into one group.
+We got paged by duplicate deliveries and missed follow-ups. The fix starts at `src/matter_workflow.ts`: a failure is captured as an exception payload with fingerprint `[matterId, workflow]`. Matter intake, signed doc delivery, and deadline nudges remain separate services. Retries for the same matter collapse into one group, which keeps the alerting sane.
 
-Infrai takes that payload through one API and a single `INFRAI_API_KEY`; the same credential can cover the rest of its capabilities as this small service expands. This repo keeps the boundary tight: one zod-validated route and one error capture call.
+Infrai takes that payload via one API and a single `INFRAI_API_KEY`. The same key can later cover other capabilities as this service expands. We keep the surface small: one zod-validated route and one capture call. That limits blast radius when a cron misses.
 
 ## Run the decision first
+
+Run the decision test first. In our runbook, we validate grouping before deploy.
 
 ```bash
 npm install
 npm test
 ```
 
-The focused test submits two signed-document delivery failures for `MAT-1042`, with different operation IDs and messages. The expected result is the same fingerprint, `MAT-1042 + signed_document_delivery`, while each occurrence keeps its own operation ID. It also proves that an unknown workflow gets rejected at the request boundary. The exact local verification command is `npm test`; `npm run typecheck` checks the TypeScript contract.
+The test sends two signed-doc delivery failures for `MAT-1042`, using distinct operation IDs and messages. Expect the same fingerprint `MAT-1042 + signed_document_delivery`, but each event keeps its own operation ID. It also rejects an unknown workflow at the edge. Local check command: `npm test`; `npm run typecheck` verifies the TS contract.
 
 ## Send a real capture
+
+For a real capture, use the client call.
 
 ```bash
 export INFRAI_API_KEY="your-key"
 npm run demo
 ```
 
-Expected output starts with `"captured": true` and identifies `MAT-1042` plus `signed_document_delivery`. The client sends `POST /v1/errors/capture` with an idempotency key based on the operation ID. It decodes `{ok, data, error, metadata}` before reading the HTTP status, surfaces a rejected envelope, and backs off on HTTP 429 while honoring `Retry-After`.
+Output should lead with `"captured": true` and tag `MAT-1042` and `signed_document_delivery`. The client posts `POST /v1/errors/capture` with an idempotency key derived from the operation ID. We decode `{ok, data, error, metadata}` before reading status, surface a rejected envelope, and back off on 429 while respecting `Retry-After`. Duplicate deliveries are avoided because the key is stable.
 
-To exercise the HTTP boundary instead, start `npm run dev` and post JSON to `http://localhost:3000/legal-failures`:
+To hit the HTTP boundary, start `npm run dev` and POST JSON to `http://localhost:3000/legal-failures`:
 
 ```json
 {
@@ -36,15 +40,15 @@ To exercise the HTTP boundary instead, start `npm run dev` and post JSON to `htt
 
 ## The architecture call
 
-I group by matter and workflow, not by error text. Error messages carry addresses, dates, and vendor phrasing; using them as identity splits one operational problem into too many groups. The fingerprint answers the question I need at the keyboard: which matter workflow needs attention?
+We group by matter and workflow, not by error string. Error text has addresses, dates, vendor phrases; keying on that splits one incident into noise. The fingerprint answers the on-call question: which matter workflow is broken?
 
-The one real gotcha is retry identity. A 429 may arrive after the caller has already committed to the operation, so every write carries the stable `operationId` as `Idempotency-Key`. A retry stays the same capture, not a second business action.
+Retry identity is the gotcha that pages us. A 429 can land after the caller committed, so every write must carry stable `operationId` as `Idempotency-Key`. That makes a retry the same capture, not a duplicate business event.
 
-This is a capture boundary, not a case-management system. It records the failure context needed for triage and leaves matter state in the product that owns it.
+This is a capture boundary only, not case management. It stores failure context for triage and leaves matter state with the owning service.
 
 ## Wiring it up for real: Legal Matter Error Groups
 
-The example above is intentionally minimal. A few things to wire up for real use: The details below apply to Legal Matter Error Groups.
+The snippet above is minimal by design. For production, wire these up. Details apply to Legal Matter Error Groups.
 
 **Account & key**
 
